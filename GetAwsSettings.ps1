@@ -75,7 +75,7 @@ foreach( $resource in  $LzStackResources.StackResources)
             try {
                 $authtypekey = "x-amazon-apigateway-authtype"
                 $authtype = $LzStackTemplate.TemplateBody.Resources.$apiName.Properties.Body.securityDefinitions.AWS_IAM.$authtypekey
-                if($authtype -eq "awsSignv4") {
+                if($authtype -eq "awsSigv4") {
                     $restApi.SecurityLevel = 2
                 }
                 else {
