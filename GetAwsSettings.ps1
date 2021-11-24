@@ -27,95 +27,114 @@ $awsSettings.Region = $stackIdParts[3]
 
 $Stages = New-Object System.Collections.Generic.Dictionary"[String,String]"
 
-foreach( $resource in  $LzStackResources.StackResources)
-{
+$startingToken = $null
 
-    switch($resource.ResourceType)
+DO {
+
+    if($startingToken -eq $null) {
+        $LzStackResourcesJson = aws cloudformation list-stack-resources --stack-name $StackName
+    }
+    else {
+        $LzStackResourcesJson = aws cloudformation list-stack-resources --stack-name $StackName --starting-token $startingToken
+    }
+
+    $LzStackResourcesJson > Resources.json
+    $LzStackResources = $LzStackResourcesJson | ConvertFrom-Json  
+
+    $startingToken = $LzStackResources.NextToken
+    foreach( $resource in  $LzStackResources.StackResourceSummaries)
     {
-        "AWS::Cognito::UserPool"
+    
+        switch($resource.ResourceType)
         {
-            $awsSettings.UserPoolId = $resource.PhysicalResourceId
-        }
-
-        "AWS::Cognito::UserPoolClient"
-        {
-            $awsSettings.ClientId = $resource.PhysicalResourceId
-        }
-
-        "AWS::Cognito::IdentityPool"
-        {
-            $awsSettings.IdentityPoolId = $resource.PhysicalResourceId
-        }
-
-        "AWS::ApiGateway::Stage"
-        {
-            $prefixlen = ($resource.LogicalResourceId).Length - ($resource.PhysicalResourceId + "Stage").Length
-            $Stages.Add($resource.LogicalResourceId.SubString(0, $prefixlen),$resource.PhysicalResourceId)
-        }
-
-        "AWS::ApiGatewayV2::Stage"
-        {
-            $prefixlen = ($resource.LogicalResourceId).Length - ($resource.PhysicalResourceId + "Stage").Length
-            $Stages.Add($resource.LogicalResourceId.SubString(0, $prefixlen ),$resource.PhysicalResourceId)
-        }
-
-        "AWS::ApiGateway::RestApi"
-        {
-            $restApi = [PSCustomObject]@{
-                Type = "Api"
-                Scheme = "https"
-                Id = $resource.PhysicalResourceId
-                Service = "execute-api"
-                Host = "amazonaws.com"
-                Port =  443
-                Stage = ""
-                SecurityLevel = 0                
+            "AWS::Cognito::UserPool"
+            {
+                $awsSettings.UserPoolId = $resource.PhysicalResourceId
             }
-            $apiName = $resource.LogicalResourceId
-            try {
-                $authtypekey = "x-amazon-apigateway-authtype"
-                $authtype = $LzStackTemplate.TemplateBody.Resources.$apiName.Properties.Body.securityDefinitions.AWS_IAM.$authtypekey
-                if($authtype -eq "awsSigv4") {
-                    $restApi.SecurityLevel = 2
+    
+            "AWS::Cognito::UserPoolClient"
+            {
+                $awsSettings.ClientId = $resource.PhysicalResourceId
+            }
+    
+            "AWS::Cognito::IdentityPool"
+            {
+                $awsSettings.IdentityPoolId = $resource.PhysicalResourceId
+            }
+    
+            "AWS::ApiGateway::Stage"
+            {
+                $prefixlen = ($resource.LogicalResourceId).Length - ($resource.PhysicalResourceId + "Stage").Length
+                $Stages.Add($resource.LogicalResourceId.SubString(0, $prefixlen),$resource.PhysicalResourceId)
+            }
+    
+            "AWS::ApiGatewayV2::Stage"
+            {
+                $prefixlen = ($resource.LogicalResourceId).Length - ($resource.PhysicalResourceId + "Stage").Length
+                $Stages.Add($resource.LogicalResourceId.SubString(0, $prefixlen ),$resource.PhysicalResourceId)
+            }
+    
+            "AWS::ApiGateway::RestApi"
+            {
+                $restApi = [PSCustomObject]@{
+                    Type = "Api"
+                    Scheme = "https"
+                    Id = $resource.PhysicalResourceId
+                    Service = "execute-api"
+                    Host = "amazonaws.com"
+                    Port =  443
+                    Stage = ""
+                    SecurityLevel = 0                
                 }
-                else {
+                $apiName = $resource.LogicalResourceId
+                try {
+                    $authtypekey = "x-amazon-apigateway-authtype"
+                    $authtype = $LzStackTemplate.TemplateBody.Resources.$apiName.Properties.Body.securityDefinitions.AWS_IAM.$authtypekey
+                    if($authtype -eq "awsSigv4") {
+                        $restApi.SecurityLevel = 2
+                    }
+                    else {
+                        $restApi.SecurityLevel = 0
+                    }
+                } catch {
                     $restApi.SecurityLevel = 0
                 }
-            } catch {
-                $restApi.SecurityLevel = 0
+                $awsSettings.ApiGateways.Add($apiName,$restApi)
             }
-            $awsSettings.ApiGateways.Add($apiName,$restApi)
-        }
-
-        "AWS::ApiGatewayV2::Api"
-        {
-            $httpApi = [PSCustomObject]@{
-                Type = "HttpApi"
-                Scheme = "https"
-                Id = $resource.PhysicalResourceId
-                Service = "execute-api"
-                Host = "amazonaws.com"
-                Port =  443
-                Stage = ""
-                SecurityLevel = 0                
-            }
-            $apiName = $resource.LogicalResourceId
-
-            try {
-                $authtype = $LzStackTemplate.TemplateBody.Resources.$apiName.Properties.Body.components.securitySchemes.OpenIdAuthorizer.type
-                if($authtype -eq "oauth2") {
-                    $httpApi.SecurityLevel = 1
+    
+            "AWS::ApiGatewayV2::Api"
+            {
+                $httpApi = [PSCustomObject]@{
+                    Type = "HttpApi"
+                    Scheme = "https"
+                    Id = $resource.PhysicalResourceId
+                    Service = "execute-api"
+                    Host = "amazonaws.com"
+                    Port =  443
+                    Stage = ""
+                    SecurityLevel = 0                
                 }
-                else {
+                $apiName = $resource.LogicalResourceId
+    
+                try {
+                    $authtype = $LzStackTemplate.TemplateBody.Resources.$apiName.Properties.Body.components.securitySchemes.OpenIdAuthorizer.type
+                    if($authtype -eq "oauth2") {
+                        $httpApi.SecurityLevel = 1
+                    }
+                    else {
+                        $httpApi.SecurityLevel = 0
+                    }
+                } catch {
                     $httpApi.SecurityLevel = 0
-                }
-            } catch {
-                $httpApi.SecurityLevel = 0
-            }            
-            $awsSettings.ApiGateways.Add($apiName,$httpApi)
+                }            
+                $awsSettings.ApiGateways.Add($apiName,$httpApi)
+            }
         }
     }
-}
+    
+
+} UNTIL ($null -eq $statingToken)
+
 
 foreach( $endpoint in  $Stages.keys)
 {
