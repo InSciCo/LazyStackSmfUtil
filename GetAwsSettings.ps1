@@ -13,17 +13,12 @@ $LzStackResourcesJson = aws cloudformation describe-stack-resources --stack-name
 $LzStackResourcesJson > Resources.json
 $LzStackResources = $LzStackResourcesJson | ConvertFrom-Json  
 
-$awsSettings = [PsCustomObject]@{
-      StackName = $StackName
-      ClientId = ""
-      UserPoolId = ""
-      IdentityPoolId = ""
-      Region =  ""
-      ApiGateways = New-Object System.Collections.Generic.Dictionary"[String,PsCustomObject]"
-    }
+$awsSettings = New-Object System.Collections.Generic.Dictionary"[String,PsCustomObject]"
+$apiGateways = New-Object System.Collections.Generic.Dictionary"[String,PsCustomObject]"
+$awsSettings.Add("ApiGateways", $apiGateways)
 
 $stackIdParts = $LzStackResources.StackResources[0].StackId.Split(':')
-$awsSettings.Region = $stackIdParts[3]
+$awsSettings["Region"] = $stackIdParts[3]
 
 $Stages = New-Object System.Collections.Generic.Dictionary"[String,String]"
 
@@ -49,17 +44,17 @@ DO {
         {
             "AWS::Cognito::UserPool"
             {
-                $awsSettings.UserPoolId = $resource.PhysicalResourceId
+                $awsSettings[$resource.LogicalResourceId] = $resource.PhysicalResourceId
             }
     
             "AWS::Cognito::UserPoolClient"
             {
-                $awsSettings.ClientId = $resource.PhysicalResourceId
+                $awsSettings[$resource.LogicalResourceId] = $resource.PhysicalResourceId
             }
     
             "AWS::Cognito::IdentityPool"
             {
-                $awsSettings.IdentityPoolId = $resource.PhysicalResourceId
+                $awsSettings[$resource.LogicalResourceId] = $resource.PhysicalResourceId
             }
     
             "AWS::ApiGateway::Stage"
@@ -99,7 +94,7 @@ DO {
                 } catch {
                     $restApi.SecurityLevel = 0
                 }
-                $awsSettings.ApiGateways.Add($apiName,$restApi)
+                $apiGateways.Add($apiName,$restApi)
             }
     
             "AWS::ApiGatewayV2::Api"
@@ -127,7 +122,7 @@ DO {
                 } catch {
                     $httpApi.SecurityLevel = 0
                 }            
-                $awsSettings.ApiGateways.Add($apiName,$httpApi)
+                $apiGateways.Add($apiName,$httpApi)
             }
         }
     }
@@ -138,7 +133,7 @@ DO {
 
 foreach( $endpoint in  $Stages.keys)
 {
-    $awsSettings.ApiGateways[$endpoint].Stage = $Stages[$endpoint]
+    $apiGateways[$endpoint].Stage = $Stages[$endpoint]
 }
 
 $awsOut = [PsCustomObject]@{
